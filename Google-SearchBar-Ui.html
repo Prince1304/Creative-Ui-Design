@@ -1,1 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
 
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Search Bar - Realistic Tea Spill (No Scroll Animation)</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            height: 100vh;
+            min-height: 100vh;
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 30%, #ffffff 0%, #edf1f7 100%);
+            font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-image: url('bg.jpg');
+            background-size: cover;
+            background-position: center;
+            position: relative;
+        }
+
+        .stage-viewport {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            perspective: 1200px;
+            pointer-events: none;
+        }
+
+        :root {
+            --mouse-x: 0;
+            --mouse-y: 0;
+        }
+
+        .scene-wrapper {
+            position: relative;
+            width: 680px;
+            max-width: 92vw;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transform-style: preserve-3d;
+            pointer-events: auto;
+            transform:
+                translate3d(0, 0, 0)
+                rotateX(calc(var(--mouse-y) * -8deg))
+                rotateY(calc(var(--mouse-x) * 8deg))
+                scale(1);
+            opacity: 1;
+            will-change: transform;
+        }
+
+        .top-scene {
+            position: absolute;
+            bottom: calc(100% - 6px);
+            width: 100%;
+            height: 120px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 0 44px;
+            pointer-events: none;
+            z-index: 6;
+            transform: translateZ(32px);
+        }
+
+        /* Plant */
+        .plant-slot {
+            position: relative;
+            bottom: -6px;
+            width: 70px;
+            height: 90px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+
+        .plant-leaf {
+            position: absolute;
+            background: #2d5a3c;
+            border-radius: 50% 50% 10% 10%;
+            transform-origin: bottom center;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .leaf-1 { width: 14px; height: 38px; top: 10px; left: 14px; transform: rotate(-25deg); animation: swayLeft 4s ease-in-out infinite alternate; }
+        .leaf-2 { width: 14px; height: 46px; top: 2px; animation: swayCenter 3.2s ease-in-out infinite alternate; }
+        .leaf-3 { width: 14px; height: 38px; top: 10px; right: 14px; transform: rotate(25deg); animation: swayRight 3.8s ease-in-out infinite alternate; }
+
+        .plant-slot:hover .leaf-1 { transform: rotate(-38deg) scale(1.08); }
+        .plant-slot:hover .leaf-2 { transform: translateY(-4px) scale(1.08); }
+        .plant-slot:hover .leaf-3 { transform: rotate(38deg) scale(1.08); }
+
+        @keyframes swayLeft { from { transform: rotate(-22deg); } to { transform: rotate(-28deg); } }
+        @keyframes swayCenter { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
+        @keyframes swayRight { from { transform: rotate(22deg); } to { transform: rotate(28deg); } }
+
+        .pot {
+            width: 44px;
+            height: 36px;
+            background: linear-gradient(135deg, #ffffff, #d8dee8);
+            border-radius: 50% 50% 40% 40% / 60% 60% 40% 40%;
+            box-shadow: inset -2px -3px 5px rgba(0, 0, 0, 0.1), 0 6px 12px rgba(0, 0, 0, 0.12);
+            position: relative;
+            z-index: 2;
+        }
+
+        /* -------------------------------------------------------------
+           MUG & LIQUID RIG
+           A real mug tipping over rotates about the point where its rim
+           first meets the surface it's being emptied onto -- not its own
+           center -- so the pivot stays fixed at that bottom-left contact
+           point for the whole gesture.
+           ------------------------------------------------------------- */
+        .mug-rig {
+            position: relative;
+            pointer-events: auto;
+            cursor: pointer;
+            width: 46px;
+            height: 52px;
+            bottom: -6px;
+        }
+
+        .mug-slot {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 46px;
+            height: 52px;
+            background: linear-gradient(145deg, #ff7426, #c23e00);
+            border-radius: 4px 4px 18px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow:
+                inset 0 3px 5px rgba(255, 255, 255, 0.45),
+                inset -3px -3px 6px rgba(0, 0, 0, 0.3),
+                0 10px 18px rgba(194, 62, 0, 0.25);
+            transform-origin: 4% 96%;
+            overflow: visible;
+        }
+
+        .mug-rim {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 10px;
+            background: #9c2e00;
+            border-radius: 50%;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        /* The liquid's own surface -- always seeks the horizontal, so as
+           the cup rotates this counter-rotates to stay level, then only
+           breaks from level right at the pour lip once it's spilling. */
+        .inner-tea-level {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 42px;
+            height: 8px;
+            background: radial-gradient(ellipse at 35% 30%, #b96a2c 0%, #9e4b17 35%, #542205 100%);
+            border-radius: 50%;
+            transform-origin: 50% 50%;
+        }
+
+        .mug-label {
+            color: #ffffff;
+            font-weight: 800;
+            font-size: 15px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            margin-top: 4px;
+        }
+
+        .mug-handle {
+            position: absolute;
+            right: -11px;
+            top: 8px;
+            width: 13px;
+            height: 26px;
+            border: 4.5px solid #c23e00;
+            border-left: none;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .steam {
+            position: absolute;
+            top: -14px;
+            width: 6px;
+            height: 14px;
+            background: rgba(255, 255, 255, 0.45);
+            border-radius: 8px;
+            filter: blur(2px);
+            opacity: 0;
+            animation: riseSteam 2.5s infinite ease-out;
+        }
+
+        @keyframes riseSteam {
+            0% { transform: translateY(0) scaleX(1); opacity: 0; }
+            40% { opacity: 0.6; }
+            100% { transform: translateY(-16px) scaleX(2); opacity: 0; }
+        }
+
+        /* -------------------------------------------------------------
+           FLUID OVERLAY & GOOEY EFFECTS
+           ------------------------------------------------------------- */
+        .fluid-canvas-overlay {
+            position: absolute;
+            top: 0;
+            left: -140px;
+            width: 220px;
+            height: 140px;
+            pointer-events: none;
+            z-index: 10;
+            filter: url('#fluid-goo');
+        }
+
+        /* Exact twin of .mug-slot: same box, same transform-origin, and
+           (once spilled) the identical rotation keyframes -- so any point
+           marked inside it traces precisely the same arc as the real rim,
+           and the stream anchored to it can never visibly separate from
+           the cup, at any rotation angle, without hand-tuned offsets. */
+        .pour-anchor {
+            position: absolute;
+            top: 0;
+            left: 0px;
+            width: 46px;
+            height: 52px;
+            transform-origin: 4% 96%;
+            pointer-events: none;
+            z-index: 11;
+        }
+
+        /* Anchored at the rim's pour-lip corner in the mug's own local
+           coordinates (top-right of the rim, since that's the corner
+           farthest from the pivot and so the one that swings lowest).
+           Counter-rotating here cancels the parent's tilt so whatever
+           hangs below always points straight down, as gravity requires. */
+        .stream-counter {
+            position: absolute;
+            /* Start directly at the mug's pour lip. Keeping this point inside
+               the exact same 46px mug box prevents any separation while rotating. */
+            top: 4px;
+            left: 44px;
+            width: 0;
+            height: 0;
+            transform-origin: top left;
+        }
+
+        /* Falling stream: a real poured stream necks down as gravity
+           accelerates the liquid (mass flow is constant, so a faster
+           column is a thinner one), and it isn't perfectly straight --
+           air resistance and the wrist give it a slight, decaying wobble. */
+        .tea-stream-mesh {
+            position: absolute;
+            /* Slight overlap into the rim removes the visible white seam. */
+            top: -2px;
+            left: 0;
+            width: 13px;
+            height: 0px;
+            background: linear-gradient(90deg, #4a1b05 0%, #8b3f12 18%, #c06a28 48%, #70300a 78%, #3d1604 100%);
+            box-shadow: inset 2px 0 2px rgba(255,255,255,.22), inset -2px 0 3px rgba(0,0,0,.35), 0 2px 5px rgba(73,25,4,.28);
+            border-radius: 60% 40% 60% 40% / 12% 14% 90% 88%;
+            transform-origin: top center;
+            opacity: 0;
+        }
+        .tea-stream-mesh::after {
+            content: '';
+            position: absolute;
+            left: 1px; right: 2px; bottom: -3px;
+            height: 5px;
+            border-radius: 45%;
+            background: linear-gradient(90deg, transparent, #cf7a34, transparent);
+            opacity: .5;
+        }
+
+        .droplet {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle at 32% 25%, #e39a55 0 8%, #9b4816 28%, #4e1b04 75%);
+            box-shadow: inset 1px 1px 2px rgba(255,255,255,.3), 0 2px 3px rgba(45,14,2,.25);
+            opacity: 0;
+        }
+
+        .drop-1 { width: 9px; height: 9px; top: 48px; right: 157px; }
+        .drop-2 { width: 6px; height: 8px; top: 56px; right: 149px; }
+        .drop-3 { width: 10px; height: 7px; top: 68px; right: 167px; }
+        .drop-4 { width: 5px; height: 6px; top: 52px; right: 143px; }
+
+        /* Impact crown -- the ring of liquid that flares up for an instant
+           where the stream first strikes a surface, then collapses down
+           into the spreading pool. */
+        .splash-core {
+            position: absolute;
+            bottom: -2px;
+            right: 145px;
+            width: 0px;
+            height: 8px;
+            background: radial-gradient(ellipse, #b45b20 0%, #753008 62%, #421402 100%);
+            box-shadow: 0 0 8px rgba(110,45,8,.35);
+            border-radius: 50px;
+            opacity: 0;
+        }
+
+        /* -------------------------------------------------------------
+           SEARCH BAR BOTTOM EXTENSION: THE SPREADING POOL
+           ------------------------------------------------------------- */
+        .search-capsule {
+            position: relative;
+            width: 100%;
+            height: 72px;
+            background: #f7f9fc;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            z-index: 2;
+            border: 6px solid #eef2f6;
+            overflow: hidden;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+            box-shadow:
+                0 20px 35px -8px rgba(32, 40, 60, 0.14),
+                0 10px 16px -4px rgba(32, 40, 60, 0.06),
+                inset 0 3px 4px rgba(170, 185, 205, 0.5),
+                inset 0 -5px 8px rgba(180, 190, 205, 0.45);
+        }
+
+        /* The puddle no longer grows as a flat rectangle. A real spill
+           doesn't fill a container evenly -- it pools deepest at the
+           impact point, then finds and collects in the lowest corner
+           (here, bottom-left), with an uneven, gently wavy surface line
+           in between rather than one flat edge. That shape comes from
+           animating clip-path, not width/height. */
+        .bottom-tea-pool {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 42px;
+            background:
+                radial-gradient(ellipse at 92% 15%, rgba(255,220,170,.5) 0 3%, transparent 12%),
+                radial-gradient(ellipse at 6% 20%, rgba(255,225,180,.4) 0 4%, transparent 16%),
+                radial-gradient(ellipse at 34% 12%, rgba(255,255,255,.22) 0 3%, transparent 15%),
+                linear-gradient(180deg, rgba(202,112,49,.88) 0%, rgba(132,55,13,.96) 38%, #552006 100%);
+            box-shadow: inset 0 3px 5px rgba(255,218,178,.3), inset 0 -4px 8px rgba(49,13,1,.38), 0 -2px 7px rgba(85,28,4,.32);
+            pointer-events: none;
+            z-index: 1;
+            clip-path: polygon(0% 100%, 0% 100%, 100% 100%, 100% 100%);
+            opacity: 0;
+            filter: url('#fluid-goo') drop-shadow(0 -2px 4px rgba(70, 28, 4, 0.3));
+        }
+
+        /* Leading edge glint -- catches the light as fresh liquid arrives */
+        .bottom-tea-shine {
+            position: absolute;
+            top: 2px;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.6) 55%, transparent 100%);
+            opacity: 0;
+        }
+
+        /* Concentric ripples from the impact point, decaying as they travel */
+        .pool-ripple {
+            position: absolute;
+            bottom: 6px;
+            right: 133px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 1.5px solid rgba(255, 214, 170, 0.55);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .trickle-down {
+            position: absolute;
+            top: 0;
+            right: 111px;
+            width: 8px;
+            height: 0px;
+            background: linear-gradient(90deg, #4a1704, #a85018 45%, #632105 100%);
+            box-shadow: inset 1px 0 1px rgba(255,255,255,.25), 1px 0 3px rgba(62,17,2,.25);
+            border-radius: 0 0 70% 70%;
+            opacity: 0;
+            z-index: 1;
+        }
+
+        /* -------------------------------------------------------------
+           TRIGGERED STATE & TIMELINE
+           A pour has four physically distinct phases, and the timings
+           below are staggered to overlap the way they would in reality:
+             1) 0.0s -> 0.55s   anticipation + tip into the pour
+             2) 0.35s -> 1.3s   stream falls, accelerating under gravity
+             3) 1.0s -> 1.5s    impact crown + radial droplets
+             4) 1.1s -> 6.4s    pool spreads (fast, then slows) + ripples fade
+           ------------------------------------------------------------- */
+        .mug-rig.spilled .mug-slot {
+            animation: pourCupTouchRim 1.5s cubic-bezier(0.32, 0.02, 0.35, 1) forwards;
+        }
+
+        /* Same animation, same timing function, same duration, same delay
+           as .mug-slot above -- this is what guarantees the lockstep. */
+        .mug-rig.spilled .pour-anchor {
+            animation: pourCupTouchRim 1.5s cubic-bezier(0.32, 0.02, 0.35, 1) forwards;
+        }
+
+        .mug-rig.spilled .stream-counter {
+            animation: pourCounterRotate 1.5s cubic-bezier(0.32, 0.02, 0.35, 1) forwards;
+        }
+
+        .mug-rig.spilled .inner-tea-level {
+            animation: teaLevelDuringPour 1.5s ease-in forwards;
+        }
+
+        .mug-rig.spilled .steam {
+            animation: steamCutOff 0.4s ease-out forwards;
+        }
+
+        .mug-rig.spilled .tea-stream-mesh {
+            animation: streamPourTouch 1.3s cubic-bezier(0.45, 0, 0.2, 1) 0.32s forwards;
+        }
+
+        .mug-rig.spilled .drop-1 { animation: dropSpray1 1s cubic-bezier(0.55, 0.06, 0.68, 0.19) 1.02s forwards; }
+        .mug-rig.spilled .drop-2 { animation: dropSpray2 0.85s cubic-bezier(0.55, 0.06, 0.68, 0.19) 1.08s forwards; }
+        .mug-rig.spilled .drop-3 { animation: dropSpray3 1.05s cubic-bezier(0.55, 0.06, 0.68, 0.19) 1.0s forwards; }
+        .mug-rig.spilled .drop-4 { animation: dropSpray4 0.75s cubic-bezier(0.55, 0.06, 0.68, 0.19) 1.14s forwards; }
+
+        .mug-rig.spilled .splash-core {
+            animation: impactCrown 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.95s forwards;
+        }
+
+        .scene-wrapper.spilled .trickle-down {
+            animation: trickleFlow 1.5s cubic-bezier(0.45, 0, 0.55, 1) 1.05s forwards;
+        }
+
+        /* Diffusion-style spread: quick while the pool is small and the
+           liquid is still arriving under momentum, then decelerating hard
+           as spreading area grows and surface tension / friction take
+           over -- true to how a thin fluid film actually spreads. */
+        .scene-wrapper.spilled .bottom-tea-pool {
+            animation: floodBottomAreaWavy 5.4s cubic-bezier(0.11, 0.85, 0.2, 1) 1.1s forwards;
+        }
+
+        .scene-wrapper.spilled .bottom-tea-shine {
+            animation: shineWake 5.4s ease-out 1.3s forwards;
+        }
+
+        .mug-rig.spilled .pool-ripple:nth-of-type(1) { animation: rippleOut 1.3s ease-out 1.05s forwards; }
+        .mug-rig.spilled .pool-ripple:nth-of-type(2) { animation: rippleOut 1.5s ease-out 1.55s forwards; }
+        .mug-rig.spilled .pool-ripple:nth-of-type(3) { animation: rippleOut 1.7s ease-out 2.2s forwards; }
+
+        /* Anticipation dip backward, then a controlled tip forward that
+           slightly overshoots the pour angle and settles -- the same
+           easing a heavy object resting against something shows. */
+        @keyframes pourCupTouchRim {
+            0%   { transform: rotate(0deg); }
+            10%  { transform: rotate(4deg); }
+            30%  { transform: rotate(-18deg); }
+            55%  { transform: rotate(-58deg); }
+            78%  { transform: rotate(-92deg); }
+            92%  { transform: rotate(-101deg) translateY(6px) translateX(-2px); }
+            100% { transform: rotate(-97deg) translateY(6px) translateX(-2px); }
+        }
+
+        /* The tea surface counter-rotates against the cup to stay level
+           right up until the lip dips below it, at which point it can no
+           longer stay level and gets swept toward the pour side. */
+        @keyframes teaLevelDuringPour {
+            0%   { transform: rotate(0deg) scaleY(1); }
+            30%  { transform: rotate(18deg) scaleY(1); }
+            55%  { transform: rotate(58deg) scaleY(0.85); }
+            80%  { transform: rotate(88deg) translate(-3px, 2px) scaleY(1.4); opacity: 0.7; }
+            100% { transform: rotate(193deg) translate(-4px, 4px) scaleY(1.6); opacity: 0.35; }
+        }
+
+        @keyframes steamCutOff {
+            to { opacity: 0; }
+        }
+
+        /* The negative of pourCupTouchRim's rotation values only -- the
+           translate component isn't cancelled, since it's a real shift of
+           the anchor point that the hanging stream should inherit as-is;
+           only the tilt needs cancelling to keep the stream vertical. */
+        @keyframes pourCounterRotate {
+            0%   { transform: rotate(0deg); }
+            10%  { transform: rotate(-4deg); }
+            30%  { transform: rotate(18deg); }
+            55%  { transform: rotate(58deg); }
+            78%  { transform: rotate(92deg); }
+            92%  { transform: rotate(101deg); }
+            100% { transform: rotate(97deg); }
+        }
+
+        /* Stream necks down as it accelerates (mass-flow conserved), with
+           a slight decaying horizontal wobble from air resistance, then
+           thins to nothing as the pour tails off. */
+        @keyframes streamPourTouch {
+            0%   { height: 0;   transform: scaleX(0.3) translateX(0) skewX(0deg);  opacity: 0; }
+            12%  { height: 10px; transform: scaleX(0.9) translateX(-1px) skewX(-4deg); opacity: 0.9; }
+            26%  { height: 24px; transform: scaleX(0.65) translateX(1px) skewX(3deg); opacity: 1; }
+            40%  { height: 38px; transform: scaleX(0.5) translateX(-1px) skewX(-2deg); opacity: 1; }
+            60%  { height: 46px; transform: scaleX(0.42) translateX(0) skewX(1deg); opacity: 1; }
+            80%  { height: 40px; transform: scaleX(0.34) translateX(1px) skewX(0deg); opacity: 0.85; }
+            94%  { height: 20px; transform: scaleX(0.22) translateY(10px); opacity: 0.4; }
+            100% { height: 0px;  transform: scaleX(0.15) translateY(30px); opacity: 0; }
+        }
+
+        @keyframes dropSpray1 {
+            0%   { transform: translate(0, 0) scale(0); opacity: 0; }
+            18%  { transform: translate(-6px, -5px) scale(1.1); opacity: 1; }
+            55%  { transform: translate(-20px, 6px) scale(1); opacity: 1; }
+            100% { transform: translate(-34px, 34px) scale(0.7); opacity: 0; }
+        }
+        @keyframes dropSpray2 {
+            0%   { transform: translate(0, 0) scale(0); opacity: 0; }
+            20%  { transform: translate(-2px, -4px) scale(0.9); opacity: 1; }
+            58%  { transform: translate(-8px, 9px) scale(0.85); opacity: 1; }
+            100% { transform: translate(-13px, 36px) scale(0.5); opacity: 0; }
+        }
+        @keyframes dropSpray3 {
+            0%   { transform: translate(0, 0) scale(0); opacity: 0; }
+            16%  { transform: translate(-9px, -6px) scale(1.2); opacity: 1; }
+            52%  { transform: translate(-27px, 5px) scale(1.05); opacity: 1; }
+            100% { transform: translate(-46px, 38px) scale(0.55); opacity: 0; }
+        }
+        @keyframes dropSpray4 {
+            0%   { transform: translate(0, 0) scale(0); opacity: 0; }
+            22%  { transform: translate(3px, -3px) scale(0.8); opacity: 1; }
+            60%  { transform: translate(6px, 10px) scale(0.7); opacity: 1; }
+            100% { transform: translate(9px, 32px) scale(0.4); opacity: 0; }
+        }
+
+        @keyframes impactCrown {
+            0%   { width: 0;   height: 0;  opacity: 0; }
+            35%  { width: 46px; height: 14px; transform: translateX(-22px) translateY(-4px); opacity: 1; }
+            70%  { width: 62px; height: 9px;  transform: translateX(-30px) translateY(0); opacity: 0.9; }
+            100% { width: 30px; height: 6px;  transform: translateX(-16px) translateY(1px); opacity: 0; }
+        }
+
+        @keyframes trickleFlow {
+            0%   { height: 0;   opacity: 0;   transform: translateX(0); }
+            22%  { height: 22px; opacity: 0.9; transform: translateX(-2px); }
+            45%  { height: 72px; width: 10px; opacity: 1;   transform: translateX(1px); }
+            70%  { height: 72px; width: 7px;  opacity: 0.92; transform: translateX(-1px); }
+            100% { height: 72px; width: 5px;  opacity: 0.85; transform: translateX(0); }
+        }
+
+        @keyframes floodBottomAreaWavy {
+            0% {
+                opacity: 0;
+                clip-path: polygon(
+                    0% 100%, 15% 100%, 32% 100%, 50% 100%, 68% 100%, 85% 100%, 100% 100%,
+                    100% 100%, 0% 100%
+                );
+            }
+            8% {
+                opacity: 0.95;
+                clip-path: polygon(
+                    0% 100%, 15% 100%, 32% 100%, 50% 100%, 68% 100%, 85% 92%, 100% 78%,
+                    100% 100%, 0% 100%
+                );
+            }
+            22% {
+                opacity: 1;
+                clip-path: polygon(
+                    0% 100%, 15% 100%, 32% 100%, 50% 98%, 68% 82%, 85% 58%, 100% 35%,
+                    100% 100%, 0% 100%
+                );
+            }
+            40% {
+                clip-path: polygon(
+                    0% 100%, 15% 99%, 32% 92%, 50% 78%, 68% 48%, 85% 22%, 100% 10%,
+                    100% 100%, 0% 100%
+                );
+            }
+            58% {
+                clip-path: polygon(
+                    0% 96%, 15% 88%, 32% 62%, 50% 42%, 68% 24%, 85% 10%, 100% 5%,
+                    100% 100%, 0% 100%
+                );
+            }
+            76% {
+                clip-path: polygon(
+                    0% 82%, 15% 68%, 32% 45%, 50% 30%, 68% 16%, 85% 7%, 100% 3%,
+                    100% 100%, 0% 100%
+                );
+            }
+            90% {
+                clip-path: polygon(
+                    0% 42%, 15% 55%, 32% 38%, 50% 24%, 68% 12%, 85% 5%, 100% 2%,
+                    100% 100%, 0% 100%
+                );
+            }
+            100% {
+                opacity: 1;
+                clip-path: polygon(
+                    0% 12%, 15% 30%, 32% 44%, 50% 40%, 68% 22%, 85% 8%, 100% 4%,
+                    100% 100%, 0% 100%
+                );
+            }
+        }
+
+        @keyframes shineWake {
+            0%   { opacity: 0;   transform: scaleX(0); }
+            15%  { opacity: 0.85; transform: scaleX(0.35); }
+            60%  { opacity: 0.5; transform: scaleX(0.85); }
+            100% { opacity: 0.4; transform: scaleX(1); }
+        }
+
+        @keyframes rippleOut {
+            0%   { width: 8px;  height: 8px;  opacity: 0.6; transform: translate(0,0); }
+            100% { width: 46px; height: 22px; opacity: 0;   transform: translate(-4px, 3px); }
+        }
+
+        .search-capsule:hover {
+            box-shadow:
+                0 28px 45px -8px rgba(32, 40, 60, 0.18),
+                0 14px 20px -4px rgba(32, 40, 60, 0.08),
+                inset 0 3px 5px rgba(170, 185, 205, 0.5),
+                inset 0 -5px 8px rgba(180, 190, 205, 0.4);
+        }
+
+        .search-capsule:focus-within {
+            border-color: #e3ebf6;
+            box-shadow:
+                0 32px 50px -8px rgba(66, 133, 244, 0.18),
+                0 16px 24px -4px rgba(32, 40, 60, 0.08),
+                inset 0 3px 5px rgba(170, 185, 205, 0.5),
+                inset 0 -6px 9px rgba(170, 185, 205, 0.5);
+        }
+
+        .google-icon {
+            width: 30px;
+            height: 30px;
+            flex-shrink: 0;
+            margin-right: 16px;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            cursor: pointer;
+            position: relative;
+            z-index: 3;
+        }
+
+        .google-icon:hover { transform: rotate(-12deg) scale(1.15); }
+
+        .search-input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            outline: none;
+            font-size: 17px;
+            color: #202124;
+            font-weight: 500;
+            position: relative;
+            z-index: 3;
+        }
+
+        .actions-group {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-shrink: 0;
+            margin-left: 12px;
+            position: relative;
+            z-index: 3;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            padding: 6px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease;
+        }
+
+        .icon-btn:hover {
+            background-color: rgba(32, 33, 36, 0.05);
+            transform: scale(1.18);
+        }
+
+        .icon-btn:active {
+            transform: scale(0.9);
+            background-color: rgba(32, 33, 36, 0.1);
+        }
+
+        .icon-btn svg {
+            width: 24px;
+            height: 24px;
+            pointer-events: none;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .mug-rig.spilled .mug-slot,
+            .mug-rig.spilled .pour-anchor,
+            .mug-rig.spilled .stream-counter,
+            .mug-rig.spilled .inner-tea-level,
+            .mug-rig.spilled .tea-stream-mesh,
+            .mug-rig.spilled .drop-1,
+            .mug-rig.spilled .drop-2,
+            .mug-rig.spilled .drop-3,
+            .mug-rig.spilled .drop-4,
+            .mug-rig.spilled .splash-core,
+            .scene-wrapper.spilled .trickle-down,
+            .scene-wrapper.spilled .bottom-tea-pool,
+            .scene-wrapper.spilled .bottom-tea-shine,
+            .mug-rig.spilled .pool-ripple {
+                animation-duration: 0.01s !important;
+                animation-delay: 0s !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true">
+        <defs>
+            <filter id="fluid-goo">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
+                <feColorMatrix in="blur" mode="matrix"
+                    values="1 0 0 0 0
+                            0 1 0 0 0
+                            0 0 1 0 0
+                            0 0 0 19 -8" result="goo" />
+                <feBlend in="SourceGraphic" in2="goo" />
+            </filter>
+        </defs>
+    </svg>
+
+    <div class="stage-viewport">
+        <div class="scene-wrapper" id="scene">
+            <div class="top-scene">
+                <div class="plant-slot">
+                    <div class="plant-leaf leaf-1"></div>
+                    <div class="plant-leaf leaf-2"></div>
+                    <div class="plant-leaf leaf-3"></div>
+                    <div class="pot"></div>
+                </div>
+
+                <div class="mug-rig" id="mugRig">
+                    <div class="fluid-canvas-overlay">
+                        <div class="droplet drop-1"></div>
+                        <div class="droplet drop-2"></div>
+                        <div class="droplet drop-3"></div>
+                        <div class="droplet drop-4"></div>
+                        <div class="splash-core"></div>
+                        <div class="pool-ripple"></div>
+                        <div class="pool-ripple"></div>
+                        <div class="pool-ripple"></div>
+                    </div>
+
+                    <div class="mug-slot">
+                        <div class="mug-rim">
+                            <div class="inner-tea-level"></div>
+                        </div>
+                        <div class="steam"></div>
+                        <span class="mug-label">P</span>
+                        <div class="mug-handle"></div>
+                    </div>
+
+                    <div class="pour-anchor">
+                        <div class="stream-counter">
+                            <div class="tea-stream-mesh"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="search-capsule">
+                <div class="trickle-down"></div>
+
+                <div class="bottom-tea-pool">
+                    <div class="bottom-tea-shine"></div>
+                </div>
+
+                <svg class="google-icon" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z" />
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z" />
+                    <path fill="#FBBC05" d="M5.28 14.27A7.08 7.08 0 0 1 4.9 12c0-.79.14-1.57.38-2.27V6.58H1.25A11.96 11.96 0 0 0 0 12c0 1.92.45 3.74 1.25 5.42l4.03-3.15z" />
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
+                </svg>
+
+                <input type="text" class="search-input" placeholder="Search Google or type a URL" />
+
+                <div class="actions-group">
+                    <button class="icon-btn" aria-label="Search by voice">
+                        <svg viewBox="0 0 24 24">
+                            <path fill="#4285F4" d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+                            <path fill="#34A853" d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                        </svg>
+                    </button>
+
+                    <button class="icon-btn" aria-label="Search by image">
+                        <svg viewBox="0 0 24 24" width="24" height="24">
+                            <path fill="#EA4335" d="M7 4h3V2H7C4.24 2 2 4.24 2 7v3h2V7c0-1.66 1.34-3 3-3z" />
+                            <path fill="#FBBC04" d="M22 7c0-2.76-2.24-5-5-5h-3v2h3c1.66 0 3 1.34 3 3v3h2V7z" />
+                            <path fill="#34A853" d="M20 17c0 1.66-1.34 3-3 3h-3v2h3c2.76 0 5-2.24 5-5v-3h-2v3z" />
+                            <path fill="#4285F4" d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 8a3 3 0 1 1 0-6 3 3 0 0 1 0 6z" />
+                            <path fill="#4285F4" d="M4 17v-3H2v3c0 2.76 2.24 5 5 5h3v-2H7c-1.66 0-3-1.34-3-3z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const root = document.documentElement;
+        const scene = document.getElementById('scene');
+        const mugRig = document.getElementById('mugRig');
+
+        mugRig.addEventListener('mouseenter', triggerSpill, { once: true });
+        mugRig.addEventListener('touchstart', triggerSpill, { once: true });
+
+        function triggerSpill() {
+            mugRig.classList.add('spilled');
+            scene.classList.add('spilled');
+        }
+
+        // Mouse Parallax Engine (scroll animation removed)
+        let mouseX = 0, mouseY = 0;
+        let targetMouseX = 0, targetMouseY = 0;
+
+        window.addEventListener('mousemove', (e) => {
+            targetMouseX = (e.clientX - window.innerWidth / 2) / (window.innerWidth / 2);
+            targetMouseY = (e.clientY - window.innerHeight / 2) / (window.innerHeight / 2);
+        });
+
+        window.addEventListener('mouseleave', () => {
+            targetMouseX = 0;
+            targetMouseY = 0;
+        });
+
+        function animate() {
+            mouseX += (targetMouseX - mouseX) * 0.08;
+            mouseY += (targetMouseY - mouseY) * 0.08;
+
+            root.style.setProperty('--mouse-x', mouseX.toFixed(4));
+            root.style.setProperty('--mouse-y', mouseY.toFixed(4));
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+
+</html>
